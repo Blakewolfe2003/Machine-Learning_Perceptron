@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport\([github.com](https://github.com/rcalix1/MachineLearningFoundations/tree/main/HW/webPerceptron))th, initial-scale=1.0" />
+  <title>L vs T Perceptron Classifier</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: white;
+      margin: 0;
+      padding: 20px;
+      color: #222;
+    }
+    .container {
+      max-width: 1100px;
+      margin: auto;
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+    }
+    h1, h2 { margin-top: 0; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(5, 50px);
+      gap: 6px;
+      margin: 15px 0;
+    }
+    .cell {
+      width: 50px;
+      height: 50px;
+      border: 1px solid lightgray;
+      background: white;
+      cursor: pointer;
+    }
+    .cell.active { background: black; }
+    .controls, .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 10px 0;
+    }
+    button {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: blue;
+      color: white;
+      font-weight: bold;
+    }
+    button.secondary { background: gray; }
+    button.danger { background: red; }
+    .info {
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+    .samples {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 15px;
+    }
+    .sample-box {
+      border: 1px solid white;
+      border-radius: 10px;
+      padding: 10px;
+      background: white;
+    }
+    .tiny-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 16px);
+      gap: 2px;
+      margin-top: 8px;
+    }
+    .tiny-cell {
+      width: 16px;
+      height: 16px;
+      border: 1px solid lightgray;
+      background: white;
+    }
+    .tiny-cell.active { background: black; }
+    .stat {
+      font-weight: bold;
+      margin-right: 18px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      border-radius: 8px;
+      padding: 10px;
+      border: 1px solid white;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Perceptron Classifier: L vs T</h1>
+    <p> Label it as <b>L</b> or <b>T</b>, collect at least 100 samples, train the perceptron, and test predictions.</p>
+
+    <h2>1) Draw a sample</h2>
+    <div id="grid" class="grid"></div>
+
+    <div class="controls">
+      <button onclick="setCurrentLabel('L')">Label as L</button>
+      <button onclick="setCurrentLabel('T')">Label as T</button>
+      <button class="secondary" onclick="clearGrid()">Clear Grid</button>
+      <button class="danger" onclick="deleteLastSample()">Delete Last Sample</button>
+    </div>
+
+    <div class="actions">
+      <button onclick="addSample()">Add Sample</button>
+      <button onclick="addAutoSamples()">Auto-Generate More Samples</button>
+      <button onclick="trainPerceptron()">Train Perceptron</button>
+      <button onclick="predictCurrent()">Predict Current Drawing</button>
+      <button class="secondary" onclick="exportDataset()">Export Dataset JSON</button>
+    </div>
+
+    <div class="info">
+      <span class="stat">Current Label: <span id="currentLabel">L</span></span>
+      <span class="stat">Total Samples: <span id="sampleCount">0</span></span>
+      <span class="stat">L Samples: <span id="lCount">0</span></span>
+      <span class="stat">T Samples: <span id="tCount">0</span></span>
+    </div>
+
+    <div class="info">
+      <div><b>Training Status:</b> <span id="trainingStatus">Not trained yet.</span></div>
+      <div><b>Prediction:</b> <span id="predictionResult">None</span></div>
+      <div><b>Weights:</b> <span id="weightsPreview">[]</span></div>
+      <div><b>Bias:</b> <span id="biasPreview">0</span></div>
+    </div>
+
+    <h2>2) Dataset preview</h2>
+    <div id="samples" class="samples"></div>
+
+    <h2>3) Exported dataset</h2>
+    <textarea id="datasetOutput" readonly></textarea>
+  </div>
+
+  <script>
+    const SIZE = 5;
+    const gridElement = document.getElementById('grid');
+    const samplesElement = document.getElementById('samples');
+    const datasetOutput = document.getElementById('datasetOutput');
+
+    let currentLabel = 'L';
+    let currentGrid = Array(SIZE * SIZE).fill(0);
+    let dataset = [];
+    let weights = Array(SIZE * SIZE).fill(0);
+    let bias = 0;
+    let trained = false;
+
+    function buildGrid() {
+      gridElement.innerHTML = '';
+      currentGrid.forEach((value, index) => {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (value ? ' active' : '');
+        cell.addEventListener('click', () => {
+          currentGrid[index] = currentGrid[index] ? 0 : 1;
+          buildGrid();
+        });
+        gridElement.appendChild(cell);
+      });
+    }
+
+    function setCurrentLabel(label) {
+      currentLabel = label;
+      document.getElementById('currentLabel').textContent = label;
+    }
+
+    function clearGrid() {
+      currentGrid = Array(SIZE * SIZE).fill(0);
+      buildGrid();
+    }
+
+    function addSample() {
+      const sum = currentGrid.reduce((a, b) => a + b, 0);
+      if (sum === 0) {
+        alert('Draw something first.');
+        return;
+      }
+      dataset.push({ x: [...currentGrid], y: currentLabel === 'L' ? -1 : 1, label: currentLabel });
+      updateCounts();
+      renderSamples();
+      clearGrid();
+    }
+
+    function deleteLastSample() {
+      if (dataset.length > 0) {
+        dataset.pop();
+        updateCounts();
+        renderSamples();
+      }
+    }
+
+    function dot(a, b) {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+      return sum;
+    }
+
+    function predictRaw(x) {
+      return dot(weights, x) + bias;
+    }
+
+    function predictClass(x) {
+      return predictRaw(x) >= 0 ? 1 : -1;
+    }
+
+    function trainPerceptron(epochs = 50, learningRate = 1) {
+      if (dataset.length < 10) {
+        alert('You need more samples before training. Aim for at least 100 total.');
+        return;
+      }
+      weights = Array(SIZE * SIZE).fill(0);
+      bias = 0;
+
+      for (let epoch = 0; epoch < epochs; epoch++) {
+        let errors = 0;
+        for (const sample of dataset) {
+          const prediction = predictClass(sample.x);
+          if (prediction !== sample.y) {
+            for (let i = 0; i < weights.length; i++) {
+              weights[i] += learningRate * sample.y * sample.x[i];
+            }
+            bias += learningRate * sample.y;
+            errors++;
+          }
+        }
+        if (errors === 0) break;
+      }
+
+      trained = true;
+      let correct = 0;
+      for (const sample of dataset) {
+        if (predictClass(sample.x) === sample.y) correct++;
+      }
+      const accuracy = ((correct / dataset.length) * 100).toFixed(2);
+      document.getElementById('trainingStatus').textContent = `Trained on ${dataset.length} samples. Training accuracy: ${accuracy}%`;
+      document.getElementById('weightsPreview').textContent = JSON.stringify(weights);
+      document.getElementById('biasPreview').textContent = bias;
+    }
+
+    function predictCurrent() {
+      if (!trained) {
+        alert('Train the perceptron first.');
+        return;
+      }
+      const result = predictClass(currentGrid);
+      document.getElementById('predictionResult').textContent = result === 1 ? 'T' : 'L';
+    }
+
+    function updateCounts() {
+      const lCount = dataset.filter(s => s.label === 'L').length;
+      const tCount = dataset.filter(s => s.label === 'T').length;
+      document.getElementById('sampleCount').textContent = dataset.length;
+      document.getElementById('lCount').textContent = lCount;
+      document.getElementById('tCount').textContent = tCount;
+    }
+
+    function renderSamples() {
+      samplesElement.innerHTML = '';
+      dataset.slice(-12).forEach((sample, idx) => {
+        const box = document.createElement('div');
+        box.className = 'sample-box';
+        box.innerHTML = `<b>Sample ${dataset.length - 11 + idx > 0 ? dataset.length - 11 + idx : idx + 1}</b><br>Label: ${sample.label}`;
+
+        const tinyGrid = document.createElement('div');
+        tinyGrid.className = 'tiny-grid';
+        sample.x.forEach(value => {
+          const tinyCell = document.createElement('div');
+          tinyCell.className = 'tiny-cell' + (value ? ' active' : '');
+          tinyGrid.appendChild(tinyCell);
+        });
+
+        box.appendChild(tinyGrid);
+        samplesElement.appendChild(box);
+      });
+      datasetOutput.value = JSON.stringify(dataset, null, 2);
+    }
+
+    function baseL() {
+      return [
+        1,0,0,0,0,
+        1,0,0,0,0,
+        1,0,0,0,0,
+        1,0,0,0,0,
+        1,1,1,1,0
+      ];
+    }
+
+    function baseT() {
+      return [
+        1,1,1,1,1,
+        0,0,1,0,0,
+        0,0,1,0,0,
+        0,0,1,0,0,
+        0,0,1,0,0
+      ];
+    }
+
+    function noisyCopy(arr, flips = 2) {
+      const copy = [...arr];
+      for (let i = 0; i < flips; i++) {
+        const index = Math.floor(Math.random() * copy.length);
+        copy[index] = copy[index] ? 0 : 1;
+      }
+      return copy;
+    }
+
+    function addAutoSamples() {
+      let target = 100;
+      if (dataset.length >= target) {
+        alert('Already have 100 or more samples.');
+        return;
+      }
+      while (dataset.length < target) {
+        const isL = dataset.length % 2 === 0;
+        const pattern = isL ? noisyCopy(baseL(), Math.floor(Math.random() * 3)) : noisyCopy(baseT(), Math.floor(Math.random() * 3));
+        dataset.push({ x: pattern, y: isL ? -1 : 1, label: isL ? 'L' : 'T' });
+      }
+      updateCounts();
+      renderSamples();
+      alert('The Dataset filled to 100 samples. You can still add your own drawings.');
+    }
+
+    function exportDataset() {
+      const blob = new Blob([JSON.stringify(dataset, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'l_t_dataset.json';
+      a.click();
+    }
+
+    buildGrid();
+    updateCounts();
+    renderSamples();
+  </script>
+</body>
+</html>
